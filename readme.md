@@ -20,6 +20,8 @@ In the evolving landscape of AI, personality alignment stands as a pivotal advan
 Install the required packages:
 
 ```bash
+pip install git+https://github.com/davidbau/baukit
+pip install xlrd
 pip install .
 ```
 
