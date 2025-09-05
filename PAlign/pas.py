@@ -260,11 +260,11 @@ def get_model(model_name='meta-llama/Llama-2-7b-chat-hf', use_bit_4=False, adapt
                 for layer, head in top_heads:
                     interventions[f"model.layers.{layer}.self_attn.head_out"] = []
                 for layer, head in top_heads:
-                    if com_directions is not None:
-                        direction = com_directions[layer_head_to_flattened_idx(layer, head, num_heads)]
-                    else:
-                        direction = probes[layer_head_to_flattened_idx(layer, head, num_heads)].coef_
-                    direction = direction / np.linalg.norm(direction)
+                    # if com_directions is not None:
+                    #     direction = com_directions[layer_head_to_flattened_idx(layer, head, num_heads)]
+                    # else:
+                    direction = probes[layer_head_to_flattened_idx(layer, head, num_heads)].coef_
+                    direction = direction / (np.linalg.norm(direction) + 1e-8)
                     activations = tuning_activations[:, layer, head, :]  # batch x 128
                     proj_vals = activations @ direction.T
                     proj_val_std = np.std(proj_vals)

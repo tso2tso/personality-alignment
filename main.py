@@ -8,7 +8,7 @@ from tqdm import tqdm, trange
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import re
 from pprint import pprint
-from PAlign.llama_pas import get_model
+from PAlign.pas import get_model
 from copy import deepcopy
 from baseline_utils import process_answers, process_few_shot, calc_mean_and_var, process_personality_prompt
 
@@ -92,7 +92,8 @@ def generateAnswer(tokenizer, model, dataset, template, scores=SCORES, system_pr
     """
     Generate answers using the model.
     """
-    batch_size = 3 if '70B' in model_file else 10
+    # batch_size = 3 if '70B' in model_file else 10
+    batch_size = 2
     questions = [item["text"].lower() for item in dataset]
     answers = []
 
@@ -226,8 +227,10 @@ def process_pas(data, model, tokenizer, model_file):
                     if item['value'] not in [0, 3]:
                         if item['value'] > 3:
                             labels.extend([1, 0])
+                            print(f"label: [1, 0]")
                         else:
                             labels.extend([0, 1])
+                            print(f"label: [0, 1]")
                         head_wise_activations.extend([
                             deepcopy(all_head_wise_activations[personal_number]),
                             deepcopy(all_head_wise_activations[personal_number + 1])
@@ -288,6 +291,17 @@ def print_and_save_results(results, mode, model_file, dataset_set):
     std_abs = [i['mean_ver_abs']['std'] for i in results]
     std_A_abs, std_C_abs, std_E_abs, std_N_abs, std_O_abs = ([i[j][1] for i in std_abs] for j in range(5))
 
+    # Extract aligned scores
+    aligned_scores_list = [i['aligned_scores'] for i in results if 'aligned_scores' in i]
+    overall_aligned_scores = [i['overall_aligned_score'] for i in results if 'overall_aligned_score' in i]
+    
+    # Calculate mean aligned scores for each dimension
+    aligned_A = [score['A'] for score in aligned_scores_list] if aligned_scores_list else []
+    aligned_C = [score['C'] for score in aligned_scores_list] if aligned_scores_list else []
+    aligned_E = [score['E'] for score in aligned_scores_list] if aligned_scores_list else []
+    aligned_N = [score['N'] for score in aligned_scores_list] if aligned_scores_list else []
+    aligned_O = [score['O'] for score in aligned_scores_list] if aligned_scores_list else []
+
     # Prepare log dictionary
     log = {
         'score': {
@@ -300,7 +314,14 @@ def print_and_save_results(results, mode, model_file, dataset_set):
             'mean_O_abs': lmean(mean_O_abs),
             'std_A_abs': lmean(std_A_abs), 'std_C_abs': lmean(std_C_abs),
             'std_E_abs': lmean(std_E_abs), 'std_N_abs': lmean(std_N_abs),
-            'std_O_abs': lmean(std_O_abs)
+            'std_O_abs': lmean(std_O_abs),
+            # Add aligned scores
+            'aligned_score_A': lmean(aligned_A) if aligned_A else 0,
+            'aligned_score_C': lmean(aligned_C) if aligned_C else 0,
+            'aligned_score_E': lmean(aligned_E) if aligned_E else 0,
+            'aligned_score_N': lmean(aligned_N) if aligned_N else 0,
+            'aligned_score_O': lmean(aligned_O) if aligned_O else 0,
+            'overall_aligned_score': lmean(overall_aligned_scores) if overall_aligned_scores else 0
         }
     }
 
@@ -310,6 +331,10 @@ def print_and_save_results(results, mode, model_file, dataset_set):
     # Add more details to the log
     log['mean'] = {'A': mean_A, 'C': mean_C, 'E': mean_E, 'N': mean_N, 'O': mean_O}
     log['std'] = {'A': std_A, 'C': std_C, 'E': std_E, 'N': std_N, 'O': std_O}
+    log['aligned_scores_detail'] = {
+        'A': aligned_A, 'C': aligned_C, 'E': aligned_E, 'N': aligned_N, 'O': aligned_O
+    }
+    log['overall_aligned_scores_detail'] = overall_aligned_scores
 
     # Save the log to a file
     log_filename = f'./log/{mode}_{model_file.split("/")[-1]}_{dataset_set}.json'
@@ -341,7 +366,7 @@ def main(mode=None, model_file='', model=None, tokenizer=None, dataset_set='OOD'
 
     elif mode == 'personality_prompt':
         # Process data using personality prompts
-        results = process_personality_prompt(data, model, tokenizer, model_file)
+       results = process_personality_prompt(data, model, tokenizer, model_file, generateAnswer, TEMPLATE)
 
     elif mode == 'PAS':
         # Process data using PAS (Personality Assessment System)

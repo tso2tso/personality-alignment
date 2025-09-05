@@ -1,7 +1,7 @@
 import re
 import numpy as np
 from tqdm import tqdm
-
+import json
 # Constants (you might want to import these from a common config file)
 SCORES = {
     "A": 5, "B": 4, "C": 3, "D": 2, "E": 1
@@ -31,6 +31,36 @@ def calc_mean_and_var(result):
         "mean": list(sorted(mean.items(), key=lambda item: item[0])),
         "std": list(sorted(std.items(), key=lambda item: item[0])),
     }
+
+
+def calc_aligned_score(global_result_abs, sample):
+    """
+    Calculate Aligned Score based on the formula:
+    Aligned Score_d = (1/M) * Σ(1/N_{d,i}) * Σ|f(LLM(κ, template)) - f(Person(κ, template))|
+    
+    Where:
+    - M is the number of samples
+    - N_{d,i} is the number of questions for dimension d in sample i
+    - The inner sum is over all questions in test set for dimension d
+    """
+    aligned_scores = {}
+    
+    # Calculate for each personality dimension
+    for dimension in ['A', 'C', 'E', 'N', 'O']:
+        if dimension in global_result_abs and len(global_result_abs[dimension]) > 0:
+            # Sum of absolute differences for this dimension
+            sum_abs_diff = sum(global_result_abs[dimension])
+            # Number of questions for this dimension
+            n_questions = len(global_result_abs[dimension])
+            # Aligned score for this dimension (normalized by number of questions)
+            aligned_scores[dimension] = sum_abs_diff / n_questions if n_questions > 0 else 0
+        else:
+            aligned_scores[dimension] = 0
+    
+    # Overall aligned score (average across all dimensions)
+    overall_aligned_score = np.mean(list(aligned_scores.values()))
+    
+    return aligned_scores, overall_aligned_score
 
 
 
@@ -63,12 +93,18 @@ def process_answers(answers,sample):
 
     mean_var = calc_mean_and_var(global_result)
     mean_var_abs = calc_mean_and_var(global_result_abs)
+    
+    # Calculate aligned scores
+    aligned_scores_per_dim, overall_aligned_score = calc_aligned_score(global_result_abs, sample)
+    
     result_file = {
         'case': sample['test'][0]['case'],
         'result': global_result,
         'count': global_cnt,
         'mean_ver': mean_var,
-        'mean_ver_abs': mean_var_abs
+        'mean_ver_abs': mean_var_abs,
+        'aligned_scores': aligned_scores_per_dim,
+        'overall_aligned_score': overall_aligned_score
     }
 
     return result_file
@@ -88,15 +124,15 @@ def process_few_shot(data, model, tokenizer, model_file, template):
     return results
 
 
-def process_personality_prompt(data, model, tokenizer, model_file):
+def process_personality_prompt(data, model, tokenizer, model_file, generateAnswer, TEMPLATE):
     """
     Process data using personality prompts method.
     """
-    system_prompt = json.load(open('PAPI/personality_prompt'))
+    system_prompt = json.load(open('PAPI/personality_prompt.json'))
     results = []
     for index, i in enumerate(tqdm(data)):
         system_prompt_text = system_prompt[index]['output'][0]
         answers = generateAnswer(tokenizer, model, data[0]['test'], TEMPLATE, system_prompt=system_prompt_text,
                                  model_file=model_file)
-        results.extend(process_answers([i], answers))
+        results.append(process_answers(answers, i))
     return results
